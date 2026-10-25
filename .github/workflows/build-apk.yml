@@ -1,0 +1,62 @@
+name: Build DompetKu APK
+
+"on":
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Organize flat files automatically
+        run: |
+          mkdir -p lib scripts assets android_native
+          for pair in "main.dart lib/main.dart" "patch_android.py scripts/patch_android.py" "icon.png assets/icon.png" "icon_foreground.png assets/icon_foreground.png" "MainActivity.kt android_native/MainActivity.kt" "BankNotificationListener.kt android_native/BankNotificationListener.kt" "TransactionParser.kt android_native/TransactionParser.kt"; do
+            set -- $pair
+            if [ -f "$1" ]; then mv -f "$1" "$2"; fi
+          done
+      - name: Check project source
+        run: |
+          test -f lib/main.dart
+          test -f scripts/patch_android.py
+          test -f android_native/MainActivity.kt
+          test -f android_native/BankNotificationListener.kt
+          test -f android_native/TransactionParser.kt
+          test -f pubspec.yaml
+      - name: Generate Android project
+        run: flutter create --project-name dompetku --org com.dompetku --platforms android .
+      - name: Add native notification tracker and bill reminders
+        run: python3 scripts/patch_android.py
+      - name: Validate Android configuration
+        run: python3 validate_v21.py
+      - name: Install Flutter packages
+        run: flutter pub get
+      - name: Generate launcher icon
+        run: dart run flutter_launcher_icons
+      - name: Analyze Flutter code
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Build Android APK
+        run: flutter build apk --release
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DompetKu-V2.1-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
